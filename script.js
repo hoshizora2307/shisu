@@ -19,10 +19,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 星空指数を計算する関数
     function calculateStargazingIndex(dayData) {
-        if (!dayData.hourly || !dayData.daily) return { totalScore: null };
+        if (!dayData?.hourly?.cloudcover || !dayData?.daily?.moon_phase) return { totalScore: null };
 
-        const cloudCover = dayData.hourly.cloudcover[21];
-        const moonPhase = dayData.daily.moon_phase[0];
+        const cloudCover = dayData.hourly.cloudcover[21]; 
+        const moonPhase = dayData.daily.moon_phase[0]; 
         const weatherCode = dayData.daily.weathercode[0];
 
         let cloudScore = Math.round((100 - cloudCover) * 0.8);
@@ -32,13 +32,13 @@ document.addEventListener('DOMContentLoaded', () => {
         else if (moonPhase.includes('quarter')) moonScore = 10;
         else if (moonPhase.includes('gibbous')) moonScore = 5;
         else if (moonPhase.includes('full')) moonScore = 0;
+
         let weatherBonus = 0;
         if ([0, 1].includes(weatherCode)) weatherBonus = 5;
         if (weatherCode >= 51) weatherBonus = -10;
 
         let totalScore = cloudScore + moonScore + weatherBonus;
-        if (totalScore > 100) totalScore = 100;
-        if (totalScore < 0) totalScore = 0;
+        totalScore = Math.max(0, Math.min(100, totalScore));
 
         return {
             totalScore,
@@ -48,7 +48,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 
-    // 天気予報データをAPIから取得
+    // 天気予報データをAPIから取得する関数
     async function fetchForecast(year, month) {
         const cacheKey = `${year}-${month}`;
         if (forecastDataCache[cacheKey]) return forecastDataCache[cacheKey];
@@ -56,35 +56,38 @@ document.addEventListener('DOMContentLoaded', () => {
         loadingSpinner.classList.remove('hidden');
         calendarBody.classList.add('hidden');
         
-        // ▼▼▼ 修正点: APIが提供する未来の期間（約14日）を考慮 ▼▼▼
         const today = new Date();
+        today.setHours(0, 0, 0, 0); // 今日の始まりに設定
         const forecastEndDate = new Date();
-        forecastEndDate.setDate(today.getDate() + 14); // 14日先までの予報を取得
+        forecastEndDate.setDate(today.getDate() + 15); // APIは最大16日先まで提供
 
-        const startDate = new Date(year, month - 1, 1);
-        let endDate = new Date(year, month, 0);
+        const requestStartDate = new Date(year, month - 1, 1);
+        const requestEndDate = new Date(year, month, 0);
 
-        // リクエスト期間が予報提供期間より未来の場合は、APIを呼び出さない
-        if (startDate > forecastEndDate) {
+        // リクエスト期間が完全に予報提供期間より未来の場合は、APIを呼び出さない
+        if (requestStartDate > forecastEndDate) {
             loadingSpinner.classList.add('hidden');
             calendarBody.classList.remove('hidden');
-            const emptyData = { isEmpty: true, daysInMonth: endDate.getDate() };
+            const emptyData = { isEmpty: true, daysInMonth: requestEndDate.getDate() };
             forecastDataCache[cacheKey] = emptyData;
             return emptyData;
         }
-        
-        // リクエスト終了日が予報提供期間を超える場合、予報終了日に合わせる
-        if (endDate > forecastEndDate) {
-            endDate = forecastEndDate;
-        }
 
-        const apiUrl = `https://api.open-meteo.com/v1/forecast?latitude=${LATITUDE}&longitude=${LONGITUDE}&daily=weathercode,moon_phase&hourly=cloudcover&start_date=${startDate.toISOString().split('T')[0]}&end_date=${endDate.toISOString().split('T')[0]}&timezone=Asia%2FTokyo`;
+        // ▼▼▼ 修正点: APIに渡す日付のフォーマットを確実なものに変更 ▼▼▼
+        const formatDate = (date) => date.toISOString().split('T')[0];
+
+        const apiStartDate = formatDate(requestStartDate < today ? today : requestStartDate);
+        const apiEndDate = formatDate(requestEndDate > forecastEndDate ? forecastEndDate : requestEndDate);
+
+        const apiUrl = `https://api.open-meteo.com/v1/forecast?latitude=${LATITUDE}&longitude=${LONGITUDE}&daily=weathercode,moon_phase&hourly=cloudcover&start_date=${apiStartDate}&end_date=${apiEndDate}&timezone=Asia%2FTokyo`;
 
         try {
             const response = await fetch(apiUrl);
-            if (!response.ok) throw new Error('APIからのデータ取得に失敗しました。');
+            if (!response.ok) throw new Error('APIサーバーが応答しませんでした。');
             const data = await response.json();
-            data.daysInMonth = new Date(year, month, 0).getDate();
+            if (data.error) throw new Error(`APIエラー: ${data.reason}`);
+            
+            data.daysInMonth = requestEndDate.getDate();
             forecastDataCache[cacheKey] = data;
             return data;
         } catch (error) {
@@ -118,15 +121,17 @@ document.addEventListener('DOMContentLoaded', () => {
             const cell = document.createElement('div');
             cell.className = 'day-cell';
             
-            // ▼▼▼ 修正点: 予報データがある日だけ指数を計算・表示 ▼▼▼
-            if (forecast.daily && forecast.daily.time[day - 1]) {
+            const dayStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            const dayIndex = forecast.daily?.time.indexOf(dayStr);
+
+            if (dayIndex > -1) {
                  const dayData = {
                     daily: {
-                        moon_phase: [forecast.daily.moon_phase[day - 1]],
-                        weathercode: [forecast.daily.weathercode[day - 1]]
+                        moon_phase: [forecast.daily.moon_phase[dayIndex]],
+                        weathercode: [forecast.daily.weathercode[dayIndex]]
                     },
                     hourly: {
-                        cloudcover: forecast.hourly.cloudcover.slice((day - 1) * 24, day * 24)
+                        cloudcover: forecast.hourly.cloudcover.slice(dayIndex * 24, (dayIndex + 1) * 24)
                     }
                 };
                 const index = calculateStargazingIndex(dayData);
@@ -141,12 +146,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 `;
                 cell.addEventListener('click', () => showModal(year, month, day, index));
             } else {
-                // 予報がない場合は「-」を表示
                 cell.innerHTML = `
                     <div class="date-number">${day}</div>
                     <div class="star-score">-</div>
                 `;
-                cell.style.cursor = 'default'; // クリックできないように見せる
+                cell.style.cursor = 'default';
             }
             calendarBody.appendChild(cell);
         }
