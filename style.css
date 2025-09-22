@@ -1,0 +1,61 @@
+:root {
+    --bg-color: #0c0f1a;
+    --text-color: #e0e0e0;
+    --border-color: rgba(160, 192, 255, 0.2);
+    --good-score: #4caf50;
+    --normal-score: #ffeb3b;
+    --bad-score: #f44336;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    font-family: 'Noto Sans JP', sans-serif;
+    padding: 15px;
+}
+.container { max-width: 800px; margin: 0 auto; }
+header { text-align: center; margin-bottom: 20px; }
+header h1 { color: #a0c0ff; }
+#location-name { color: #aaa; }
+
+#calendar-controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+#calendar-controls button { background: none; border: none; color: var(--text-color); cursor: pointer; padding: 10px; }
+#month-year-label { font-size: 1.5rem; }
+
+#calendar { display: flex; flex-direction: column; }
+.calendar-header { display: grid; grid-template-columns: repeat(7, 1fr); text-align: center; color: #888; padding-bottom: 10px; }
+.calendar-body { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
+
+.day-cell {
+    background-color: rgba(28, 32, 51, 0.7);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 8px;
+    min-height: 80px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    transition: background-color 0.2s;
+}
+.day-cell.other-month { color: #555; background: none; }
+.day-cell:not(.other-month) { cursor: pointer; }
+.day-cell:not(.other-month):hover { background-color: rgba(160, 192, 255, 0.2); }
+
+.date-number { font-size: 0.9rem; }
+.star-score { font-size: 1.5rem; font-weight: 700; margin-top: 5px; }
+.score-good { color: var(--good-score); text-shadow: 0 0 5px var(--good-score); }
+.score-normal { color: var(--normal-score); text-shadow: 0 0 5px var(--normal-score); }
+.score-bad { color: var(--bad-score); text-shadow: 0 0 5px var(--bad-score); }
+
+.loading-spinner { text-align: center; padding: 30px; }
+.spinner { border: 4px solid rgba(255,255,255,0.3); border-radius: 50%; border-top: 4px solid #fff; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 10px; }
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+/* モーダル */
+.modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.7); display: flex; justify-content: center; align-items: center; padding: 20px; z-index: 1001; }
+.modal-content { background-color: var(--bg-color); border: 1px solid #a0c0ff; padding: 25px; border-radius: 15px; max-width: 400px; width: 100%; position: relative; }
+.close-button { position: absolute; top: 10px; right: 15px; background: none; border: none; color: var(--text-color); font-size: 2rem; cursor: pointer; }
+#modal-date { margin-bottom: 20px; color: #f0c43d; }
+#modal-body p { margin-bottom: 10px; line-height: 1.6; }
+#modal-body strong { color: #a0c0ff; }
+.hidden { display: none; }
