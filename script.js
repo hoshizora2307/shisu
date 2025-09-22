@@ -15,38 +15,28 @@ document.addEventListener('DOMContentLoaded', () => {
     const LONGITUDE = 138.50;
 
     let currentDate = new Date();
-    let forecastDataCache = {}; // 取得したデータをキャッシュ
+    let forecastDataCache = {}; 
 
     // 星空指数を計算する関数
     function calculateStargazingIndex(dayData) {
-        //夜21時の雲量(%)
-        const cloudCover = dayData.hourly.cloudcover[21]; 
-        //月の満ち欠け
-        const moonPhase = dayData.daily.moon_phase[0]; 
-        //天気コード
+        if (!dayData.hourly || !dayData.daily) return { totalScore: null };
+
+        const cloudCover = dayData.hourly.cloudcover[21];
+        const moonPhase = dayData.daily.moon_phase[0];
         const weatherCode = dayData.daily.weathercode[0];
 
-        // 1. 雲量に基づくスコア (最大80点)
-        // 雲量0%で80点、100%で0点
         let cloudScore = Math.round((100 - cloudCover) * 0.8);
-
-        // 2. 月の満ち欠けに基づくスコア (最大20点)
         let moonScore = 0;
-        // 月の光が少ないほど高得点
         if (moonPhase.includes('new')) moonScore = 20;
         else if (moonPhase.includes('crescent')) moonScore = 15;
         else if (moonPhase.includes('quarter')) moonScore = 10;
         else if (moonPhase.includes('gibbous')) moonScore = 5;
         else if (moonPhase.includes('full')) moonScore = 0;
-
-        // 3. 天気によるボーナス/減点
         let weatherBonus = 0;
-        if ([0, 1].includes(weatherCode)) weatherBonus = 5; // 快晴/晴れ
-        if ([2, 3].includes(weatherCode)) weatherBonus = 0; // 曇り
-        if (weatherCode >= 51) weatherBonus = -10; // 雨/雪
+        if ([0, 1].includes(weatherCode)) weatherBonus = 5;
+        if (weatherCode >= 51) weatherBonus = -10;
 
         let totalScore = cloudScore + moonScore + weatherBonus;
-        // 0-100の範囲に収める
         if (totalScore > 100) totalScore = 100;
         if (totalScore < 0) totalScore = 0;
 
@@ -61,21 +51,40 @@ document.addEventListener('DOMContentLoaded', () => {
     // 天気予報データをAPIから取得
     async function fetchForecast(year, month) {
         const cacheKey = `${year}-${month}`;
-        if (forecastDataCache[cacheKey]) {
-            return forecastDataCache[cacheKey];
-        }
+        if (forecastDataCache[cacheKey]) return forecastDataCache[cacheKey];
 
         loadingSpinner.classList.remove('hidden');
         calendarBody.classList.add('hidden');
         
-        const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
-        const endDate = new Date(year, month, 0).toISOString().split('T')[0];
-        const apiUrl = `https://api.open-meteo.com/v1/forecast?latitude=${LATITUDE}&longitude=${LONGITUDE}&daily=weathercode,moon_phase&hourly=cloudcover&start_date=${startDate}&end_date=${endDate}&timezone=Asia%2FTokyo`;
+        // ▼▼▼ 修正点: APIが提供する未来の期間（約14日）を考慮 ▼▼▼
+        const today = new Date();
+        const forecastEndDate = new Date();
+        forecastEndDate.setDate(today.getDate() + 14); // 14日先までの予報を取得
+
+        const startDate = new Date(year, month - 1, 1);
+        let endDate = new Date(year, month, 0);
+
+        // リクエスト期間が予報提供期間より未来の場合は、APIを呼び出さない
+        if (startDate > forecastEndDate) {
+            loadingSpinner.classList.add('hidden');
+            calendarBody.classList.remove('hidden');
+            const emptyData = { isEmpty: true, daysInMonth: endDate.getDate() };
+            forecastDataCache[cacheKey] = emptyData;
+            return emptyData;
+        }
+        
+        // リクエスト終了日が予報提供期間を超える場合、予報終了日に合わせる
+        if (endDate > forecastEndDate) {
+            endDate = forecastEndDate;
+        }
+
+        const apiUrl = `https://api.open-meteo.com/v1/forecast?latitude=${LATITUDE}&longitude=${LONGITUDE}&daily=weathercode,moon_phase&hourly=cloudcover&start_date=${startDate.toISOString().split('T')[0]}&end_date=${endDate.toISOString().split('T')[0]}&timezone=Asia%2FTokyo`;
 
         try {
             const response = await fetch(apiUrl);
             if (!response.ok) throw new Error('APIからのデータ取得に失敗しました。');
             const data = await response.json();
+            data.daysInMonth = new Date(year, month, 0).getDate();
             forecastDataCache[cacheKey] = data;
             return data;
         } catch (error) {
@@ -97,40 +106,48 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const forecast = await fetchForecast(year, month);
         if (!forecast) return;
-
+        
+        const daysInMonth = forecast.daysInMonth;
         const firstDay = new Date(year, month - 1, 1).getDay();
-        const daysInMonth = new Date(year, month, 0).getDate();
 
-        // 1日までの空白セルを生成
         for (let i = 0; i < firstDay; i++) {
             calendarBody.innerHTML += `<div class="day-cell other-month"></div>`;
         }
         
-        // 日付セルを生成
         for (let day = 1; day <= daysInMonth; day++) {
-            const dayData = {
-                daily: {
-                    moon_phase: [forecast.daily.moon_phase[day - 1]],
-                    weathercode: [forecast.daily.weathercode[day - 1]]
-                },
-                hourly: {
-                    cloudcover: forecast.hourly.cloudcover.slice((day - 1) * 24, day * 24)
-                }
-            };
-            const index = calculateStargazingIndex(dayData);
-            
             const cell = document.createElement('div');
             cell.className = 'day-cell';
             
-            let scoreClass = 'score-bad';
-            if (index.totalScore >= 80) scoreClass = 'score-good';
-            else if (index.totalScore >= 50) scoreClass = 'score-normal';
+            // ▼▼▼ 修正点: 予報データがある日だけ指数を計算・表示 ▼▼▼
+            if (forecast.daily && forecast.daily.time[day - 1]) {
+                 const dayData = {
+                    daily: {
+                        moon_phase: [forecast.daily.moon_phase[day - 1]],
+                        weathercode: [forecast.daily.weathercode[day - 1]]
+                    },
+                    hourly: {
+                        cloudcover: forecast.hourly.cloudcover.slice((day - 1) * 24, day * 24)
+                    }
+                };
+                const index = calculateStargazingIndex(dayData);
+                
+                let scoreClass = 'score-bad';
+                if (index.totalScore >= 80) scoreClass = 'score-good';
+                else if (index.totalScore >= 50) scoreClass = 'score-normal';
 
-            cell.innerHTML = `
-                <div class="date-number">${day}</div>
-                <div class="star-score ${scoreClass}">${index.totalScore}</div>
-            `;
-            cell.addEventListener('click', () => showModal(year, month, day, index));
+                cell.innerHTML = `
+                    <div class="date-number">${day}</div>
+                    <div class="star-score ${scoreClass}">${index.totalScore}</div>
+                `;
+                cell.addEventListener('click', () => showModal(year, month, day, index));
+            } else {
+                // 予報がない場合は「-」を表示
+                cell.innerHTML = `
+                    <div class="date-number">${day}</div>
+                    <div class="star-score">-</div>
+                `;
+                cell.style.cursor = 'default'; // クリックできないように見せる
+            }
             calendarBody.appendChild(cell);
         }
     }
@@ -146,7 +163,6 @@ document.addEventListener('DOMContentLoaded', () => {
         modal.classList.remove('hidden');
     }
 
-    // --- 補助関数 ---
     function getMoonPhaseName(phase) {
         const phases = { new_moon: '新月', waxing_crescent: '三日月', first_quarter: '上弦の月', waxing_gibbous: '十三夜', full_moon: '満月', waning_gibbous: '十六夜', last_quarter: '下弦の月', waning_crescent: '有明月'};
         return phases[phase] || phase;
@@ -156,7 +172,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return codes[code] || '不明';
     }
 
-    // --- イベントリスナー ---
     prevMonthBtn.addEventListener('click', () => {
         currentDate.setMonth(currentDate.getMonth() - 1);
         renderCalendar(currentDate);
@@ -170,6 +185,5 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.target === modal) modal.classList.add('hidden');
     });
 
-    // --- 初期化 ---
     renderCalendar(currentDate);
 });
