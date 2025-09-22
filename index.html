@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>星空指数カレンダー</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <h1>星空指数カレンダー</h1>
+            <p id="location-name">長野県, 山ノ内町</p>
+        </header>
+
+        <main>
+            <div id="calendar-controls">
+                <button id="prev-month-btn"><i class="material-icons">chevron_left</i></button>
+                <h2 id="month-year-label">2025年 9月</h2>
+                <button id="next-month-btn"><i class="material-icons">chevron_right</i></button>
+            </div>
+            <div id="calendar">
+                <div class="calendar-header">
+                    <div>日</div><div>月</div><div>火</div><div>水</div><div>木</div><div>金</div><div>土</div>
+                </div>
+                <div id="calendar-body" class="calendar-body">
+                    </div>
+            </div>
+        </main>
+        <div id="loading-spinner" class="hidden">
+            <div class="spinner"></div>
+            <p>予報データを取得中...</p>
+        </div>
+    </div>
+    
+    <div id="modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <button id="close-button" class="close-button">&times;</button>
+            <h3 id="modal-date"></h3>
+            <div id="modal-body">
+                </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
