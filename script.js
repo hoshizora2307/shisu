@@ -48,7 +48,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 
-    // 天気予報データをAPIから取得する関数
+    // ▼▼▼ APIリクエストのロジックを全面的に修正 ▼▼▼
     async function fetchForecast(year, month) {
         const cacheKey = `${year}-${month}`;
         if (forecastDataCache[cacheKey]) return forecastDataCache[cacheKey];
@@ -57,29 +57,39 @@ document.addEventListener('DOMContentLoaded', () => {
         calendarBody.classList.add('hidden');
         
         const today = new Date();
-        today.setHours(0, 0, 0, 0); // 今日の始まりに設定
-        const forecastEndDate = new Date();
-        forecastEndDate.setDate(today.getDate() + 15); // APIは最大16日先まで提供
+        today.setHours(0, 0, 0, 0);
 
         const requestStartDate = new Date(year, month - 1, 1);
         const requestEndDate = new Date(year, month, 0);
 
-        // リクエスト期間が完全に予報提供期間より未来の場合は、APIを呼び出さない
-        if (requestStartDate > forecastEndDate) {
+        // リクエスト月が完全に過去の場合、APIを呼び出さずに終了
+        if (requestEndDate < today) {
             loadingSpinner.classList.add('hidden');
             calendarBody.classList.remove('hidden');
-            const emptyData = { isEmpty: true, daysInMonth: requestEndDate.getDate() };
-            forecastDataCache[cacheKey] = emptyData;
-            return emptyData;
+            const pastData = { isPast: true, daysInMonth: requestEndDate.getDate() };
+            forecastDataCache[cacheKey] = pastData;
+            return pastData;
         }
 
-        // ▼▼▼ 修正点: APIに渡す日付のフォーマットを確実なものに変更 ▼▼▼
+        const forecastAPILimit = new Date();
+        forecastAPILimit.setDate(today.getDate() + 15); // APIは最大16日先まで提供
+
+        // リクエスト月が予報提供期間より未来の場合は、APIを呼び出さない
+        if (requestStartDate > forecastAPILimit) {
+            loadingSpinner.classList.add('hidden');
+            calendarBody.classList.remove('hidden');
+            const futureData = { isFuture: true, daysInMonth: requestEndDate.getDate() };
+            forecastDataCache[cacheKey] = futureData;
+            return futureData;
+        }
+
         const formatDate = (date) => date.toISOString().split('T')[0];
 
-        const apiStartDate = formatDate(requestStartDate < today ? today : requestStartDate);
-        const apiEndDate = formatDate(requestEndDate > forecastEndDate ? forecastEndDate : requestEndDate);
+        // APIにリクエストする開始日は、今日より過去にはしない
+        const apiStartDate = requestStartDate < today ? today : requestStartDate;
+        const apiEndDate = requestEndDate > forecastAPILimit ? forecastAPILimit : requestEndDate;
 
-        const apiUrl = `https://api.open-meteo.com/v1/forecast?latitude=${LATITUDE}&longitude=${LONGITUDE}&daily=weathercode,moon_phase&hourly=cloudcover&start_date=${apiStartDate}&end_date=${apiEndDate}&timezone=Asia%2FTokyo`;
+        const apiUrl = `https://api.open-meteo.com/v1/forecast?latitude=${LATITUDE}&longitude=${LONGITUDE}&daily=weathercode,moon_phase&hourly=cloudcover&start_date=${formatDate(apiStartDate)}&end_date=${formatDate(apiEndDate)}&timezone=Asia%2FTokyo`;
 
         try {
             const response = await fetch(apiUrl);
@@ -124,7 +134,14 @@ document.addEventListener('DOMContentLoaded', () => {
             const dayStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
             const dayIndex = forecast.daily?.time.indexOf(dayStr);
 
-            if (dayIndex > -1) {
+            let content = '';
+            if (forecast.isPast) {
+                content = `
+                    <div class="date-number">${day}</div>
+                    <div class="star-score">-</div>
+                `;
+                 cell.style.cursor = 'default';
+            } else if (dayIndex > -1) {
                  const dayData = {
                     daily: {
                         moon_phase: [forecast.daily.moon_phase[dayIndex]],
@@ -140,18 +157,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (index.totalScore >= 80) scoreClass = 'score-good';
                 else if (index.totalScore >= 50) scoreClass = 'score-normal';
 
-                cell.innerHTML = `
+                content = `
                     <div class="date-number">${day}</div>
                     <div class="star-score ${scoreClass}">${index.totalScore}</div>
                 `;
                 cell.addEventListener('click', () => showModal(year, month, day, index));
             } else {
-                cell.innerHTML = `
+                content = `
                     <div class="date-number">${day}</div>
                     <div class="star-score">-</div>
                 `;
                 cell.style.cursor = 'default';
             }
+            cell.innerHTML = content;
             calendarBody.appendChild(cell);
         }
     }
